@@ -1,0 +1,24 @@
+{
+"RunningServer":[
+	{"serverid":100,"portno":5050},
+	{"serverid":101,"portno":5051},
+	{"serverid":102,"portno":5052},
+	{"serverid":103,"portno":5053},
+	{"serverid":104,"portno":5054},
+	{"serverid":105,"portno":5055},
+	{"serverid":106,"portno":5056},
+	{"serverid":107,"portno":5057},
+	{"serverid":108,"portno":5058},
+	{"serverid":109,"portno":5059},
+	{"serverid":110,"portno":5060},
+	{"serverid":111,"portno":5061},
+	{"serverid":112,"portno":5062},
+	{"serverid":113,"portno":5063},
+	{"serverid":114,"portno":5064},
+	{"serverid":115,"portno":5065},
+	{"serverid":116,"portno":5066},
+	{"serverid":117,"portno":5067},
+	{"serverid":118,"portno":5068},
+	{"serverid":119,"portno":5069}
+	]
+}
