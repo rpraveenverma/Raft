@@ -6,13 +6,13 @@ import (
 	"math/rand"
 	"time"
 	"encoding/json"
-)
 
+)
+var noofserverup int
 const (
 	FOLLOWER  = -1
 	CANDIDATE = 0
 	LEADER    = 1
-	noofserverup = 5
 )
 
 type Raft interface {
@@ -54,53 +54,46 @@ func (r raft) Term() int {
 func (r raft) isLeader() bool {
 	return true
 }
-func New(sid int, timeout  time.Duration,filename string) raft {
+func New(sid int,filename string) raft {
 	var raftinstance raft
 	raftinstance.serverobj = cluster.New(sid, filename)
 	raftinstance.term = 0
 	raftinstance.sid = sid
-	raftinstance.timeout = timeout
+	raftinstance.timeout = random(300,600)
 	raftinstance.state = FOLLOWER
-	//noofserverup += 1
-	raftinstance.serverresponse()
+	noofserverup += 1
+	go raftinstance.serverresponse()
 	return raftinstance
 }
 
 func (r raft) serverresponse() {
-	go r.Follower()
-	go r.Candidate()
-	//go r.Leader()
-}
-
-func (r raft) Follower() {
 	for {
 		if r.state == FOLLOWER {
 			select {
-			case <-time.After(r.timeout * time.Second):
+			case <-time.After(r.timeout * time.Millisecond):
 				var votereq VoteReq
 				votereq.Typ = "votereq"
 				votereq.Sid = r.sid
 				votereq.Term = r.term+1
 				r.term += 1
-				fmt.Print(votereq)
-				fmt.Println(" sent")
-				msg, err := json.Marshal(votereq)
+				fmt.Println(votereq, "sent with term", r.term)
+		 		msg, err := json.Marshal(votereq)
 				if err != nil {
 					panic(err)
 				}
-			r.serverobj.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, Msgtype:votereq.Typ, Msg:msg}
+			    r.serverobj.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, Msgtype:votereq.Typ, Msg:msg}
 				r.state = CANDIDATE
 			case instanceenv := (<-r.serverobj.Inbox()):
 				switch {
 				case instanceenv.Msgtype == "votereq":
 					var votereq VoteReq
 
-					err1 := json.Unmarshal(instanceenv.Msg, &votereq)
+					err1 := json.Unmarshal(instanceenv.Msg,&votereq)
 					if err1 != nil {
 						panic("panic in Unmarshling the data")
 					}
-					fmt.Println(votereq, "with term", votereq.Term)
 					if votereq.Term > r.term {
+						r.term = votereq.Term
 						var voteres VoteRes
 						voteres.Typ = "voteres"
 						voteres.Voterid = r.sid
@@ -112,7 +105,7 @@ func (r raft) Follower() {
 						}
 
 						r.serverobj.Outbox() <- &cluster.Envelope{Pid: votereq.Sid, Msgtype:voteres.Typ, Msg:msg}
-						r.term = votereq.Term
+
 					} else if votereq.Term == r.term {
 						var voteres VoteRes
 						voteres.Typ = "voteres"
@@ -123,6 +116,7 @@ func (r raft) Follower() {
 						if err != nil {
 							panic(err)
 						}
+						fmt.Println(voteres, " sent with term", r.term)
 						r.serverobj.Outbox() <- &cluster.Envelope{Pid: votereq.Sid, Msgtype:voteres.Typ, Msg: msg}
 					}
 				case instanceenv.Msgtype == "heartbeat":
@@ -135,20 +129,13 @@ func (r raft) Follower() {
 						r.term = appendentry.Term
 					}
 				}
-			case <-time.After(time.Second * 100):
+			case <-time.After(time.Second * 50):
 				fmt.Println("channel is stuck")
 			}
 		}
-	}
-
-}
-func (r raft) Candidate() {
-
-	for {
 		if r.state == CANDIDATE {
-			fmt.Println("Candidate")
 			select {
-			case <-time.After(r.timeout * time.Second):
+			case <-time.After(r.timeout * time.Millisecond):
 				r.term += 1
 				var votereq VoteReq
 				votereq.Typ = "votereq"
@@ -181,6 +168,7 @@ func (r raft) Candidate() {
 						if err != nil {
 							panic(err)
 						}
+						fmt.Println(voteres, " sent with term", r.term)
 						r.serverobj.Outbox() <- &cluster.Envelope{Pid: votereq.Sid, Msgtype:voteres.Typ, Msg: msg}
 					}
 				case instanceenv.Msgtype == "voteres":
@@ -204,51 +192,50 @@ func (r raft) Candidate() {
 						panic("panic in Unmarshling the data")
 					}
 					if appendentry.Term >= r.term {
+						fmt.Println(r.term, " now Candidate to follower")
 						r.state = FOLLOWER
 					}
 				}
-			case <-time.After(time.Second * 100):
+			case <-time.After(time.Second * 50):
 				fmt.Println("channel is stuck")
 			}
 		}
-	}
-}
-
-
-func (r raft) Leader() {
-	for r.state == LEADER {
-		select {
-		case <- time.After(100 * time.Millisecond):
-			var appendentry AppendEntry
-			appendentry.Typ = "heartbeat"
-			appendentry.Sid = r.sid
-			appendentry.Term = r.term
-			msg,err:=json.Marshal(appendentry)
-			if err!=nil{
-				panic(err)
-			}
-
-		r.serverobj.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, Msgtype:appendentry.Typ,Msg: msg}
-		case <- time.After(r.timeout): // Election Time out
-			r.state = CANDIDATE
-		case instanceenv := (<-r.serverobj.Inbox()):
-			switch {
-			case instanceenv.Msgtype == "heartbeat": // leader is alive ... stuff regarding that
+		if r.state == LEADER {
+			select {
+			case <-time.After(50 * time.Millisecond):
 				var appendentry AppendEntry
-				err1:=json.Unmarshal(instanceenv.Msg,&appendentry)
-				if err1 !=nil {
-					panic("panic in Unmarshling the data")
+				appendentry.Typ = "heartbeat"
+				appendentry.Sid = r.sid
+				appendentry.Term = r.term
+				msg, err := json.Marshal(appendentry)
+				if err != nil {
+					panic(err)
 				}
-				if appendentry.Term > r.term {
-					r.state = FOLLOWER
+		//	fmt.Println(appendentry," sent with term",appendentry.Term)
+			r.serverobj.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, Msgtype:appendentry.Typ, Msg: msg}
+
+			case instanceenv := (<-r.serverobj.Inbox()):
+				switch {
+				case instanceenv.Msgtype == "heartbeat":
+					var appendentry AppendEntry
+					err1 := json.Unmarshal(instanceenv.Msg, &appendentry)
+					if err1 != nil {
+						panic("panic in Unmarshling the data")
+					}
+					if appendentry.Term > r.term {
+						fmt.Println(r.term," now Leader to follower")
+						r.state = FOLLOWER
+					}
 				}
+			case <-time.After(time.Second * 50):
+				fmt.Println("channel is stuck")
 			}
-		case <- time.After(time.Millisecond * 3000):
-			fmt.Println("channel is stuck")
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
 func random(min, max int) time.Duration {
+	rand.Seed(time.Now().UnixNano())
 	return time.Duration(rand.Int63n(int64(max-min)))+time.Duration(min)
 }
