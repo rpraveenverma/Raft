@@ -52,7 +52,12 @@ func (r raft) Term() int {
 }
 
 func (r raft) isLeader() bool {
-	return true
+	var status bool
+	status= true
+	if r.state!=LEADER{
+		status=false
+	}
+	return status
 }
 func New(sid int,filename string) raft {
 	var raftinstance raft
@@ -77,11 +82,11 @@ func (r raft) serverresponse() {
 				votereq.Term = r.term+1
 				r.term += 1
 				fmt.Println(votereq, "sent with term", r.term)
-		 		msg, err := json.Marshal(votereq)
+				msg, err := json.Marshal(votereq)
 				if err != nil {
 					panic(err)
 				}
-			    r.serverobj.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, Msgtype:votereq.Typ, Msg:msg}
+			r.serverobj.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, Msgtype:votereq.Typ, Msg:msg}
 				r.state = CANDIDATE
 			case instanceenv := (<-r.serverobj.Inbox()):
 				switch {
@@ -211,7 +216,7 @@ func (r raft) serverresponse() {
 				if err != nil {
 					panic(err)
 				}
-		//	fmt.Println(appendentry," sent with term",appendentry.Term)
+				//	fmt.Println(appendentry," sent with term",appendentry.Term)
 			r.serverobj.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, Msgtype:appendentry.Typ, Msg: msg}
 
 			case instanceenv := (<-r.serverobj.Inbox()):
